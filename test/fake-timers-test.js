@@ -1,6 +1,9 @@
 /* eslint-disable no-empty-function */
 "use strict";
 
+/* eslint-disable consistent-return */
+// This is because we need to do `return this.skip()` when feature detecting in tests
+
 /*
  * FIXME This is an interim hack to break a circular dependency between FakeTimers,
  * nise and sinon.
@@ -66,7 +69,6 @@ describe("issue #59", function () {
         clock.uninstall();
     });
 });
-
 describe("issue #73", function () {
     it("should install with date object", function () {
         const date = new Date("2015-09-25");
@@ -3083,7 +3085,7 @@ describe("FakeTimers", function () {
 
         it("does not remove immediate", function () {
             if (!setImmediatePresent) {
-                this.skip();
+                return this.skip();
             }
 
             const stub = sinon.stub();
@@ -3134,7 +3136,7 @@ describe("FakeTimers", function () {
 
         it("resets hrTime - issue #206", function () {
             if (!hrtimePresent) {
-                this.skip();
+                return this.skip();
             }
 
             const clock = FakeTimers.createClock();
@@ -3269,7 +3271,7 @@ describe("FakeTimers", function () {
 
         it("does not remove immediate", function () {
             if (!setImmediatePresent) {
-                this.skip();
+                return this.skip();
             }
 
             const stub = sinon.stub();
@@ -3450,8 +3452,9 @@ describe("FakeTimers", function () {
         describe("now", function () {
             it("returns clock.now", function () {
                 if (!Date.now) {
-                    this.skip();
+                    return this.skip();
                 }
+
                 /* eslint camelcase: "off" */
                 const clock_now = this.clock.Date.now();
                 const global_now = GlobalDate.now();
@@ -3461,8 +3464,9 @@ describe("FakeTimers", function () {
 
             it("is undefined", function () {
                 if (Date.now) {
-                    this.skip();
+                    return this.skip();
                 }
+
                 assert.isUndefined(this.clock.Date.now);
             });
         });
@@ -3483,17 +3487,17 @@ describe("FakeTimers", function () {
         });
 
         describe("toSource", function () {
-            it("is mirrored", function () {
+            before(function () {
                 if (!Date.toSource) {
                     this.skip();
                 }
+            });
+
+            it("is mirrored", function () {
                 assert.same(this.clock.Date.toSource(), Date.toSource());
             });
 
             it("is undefined", function () {
-                if (Date.toSource) {
-                    this.skip();
-                }
                 assert.isUndefined(this.clock.Date.toSource);
             });
         });
@@ -3758,6 +3762,10 @@ describe("FakeTimers", function () {
             it("should not alter the global performance properties and methods", function () {
                 // In Phantom.js environment, Performance.prototype has only "now" method.
                 // For testing, some stub functions need to be assigned.
+                if (typeof Performance === "undefined") {
+                    return this.skip();
+                }
+
                 Performance.prototype.someFunc1 = function () {};
                 Performance.prototype.someFunc2 = function () {};
                 Performance.prototype.someFunc3 = function () {};
@@ -3775,7 +3783,25 @@ describe("FakeTimers", function () {
                 delete Performance.prototype.someFunc3;
             });
 
+            it("should mock performance on Node 16+", function () {
+                // node 16+ has a performance object but not a global constructor
+                if (typeof performance === "undefined") {
+                    return this.skip();
+                }
+                if (typeof Performance !== "undefined") {
+                    return this.skip();
+                }
+
+                // does not crash
+                this.clock = FakeTimers.install();
+                this.clock.uninstall();
+            });
+
             it("should replace the getEntries, getEntriesByX methods with noops that return []", function () {
+                if (typeof Performance === "undefined") {
+                    return this.skip();
+                }
+
                 function noop() {
                     return ["foo"];
                 }
@@ -3941,7 +3967,7 @@ describe("FakeTimers", function () {
 
         it("should test setImmediate", function (done) {
             if (!setImmediatePresent) {
-                this.skip();
+                return this.skip();
             }
 
             const date = new Date("2015-09-25");
@@ -4050,7 +4076,7 @@ describe("FakeTimers", function () {
 
         it("can clear setImmediate", function (done) {
             if (globalObject.setImmediate === undefined) {
-                this.skip();
+                return this.skip();
             }
 
             const timer = globalObject.setImmediate(
@@ -4063,7 +4089,7 @@ describe("FakeTimers", function () {
 
         it("can clear requestAnimationFrame", function (done) {
             if (globalObject.requestAnimationFrame === undefined) {
-                this.skip();
+                return this.skip();
             }
 
             const timer = globalObject.requestAnimationFrame(
@@ -4076,7 +4102,7 @@ describe("FakeTimers", function () {
 
         it("can clear requestIdleCallback", function (done) {
             if (globalObject.requestIdleCallback === undefined) {
-                this.skip();
+                return this.skip();
             }
 
             const timer = globalObject.requestIdleCallback(
@@ -4234,7 +4260,7 @@ describe("FakeTimers", function () {
 
         it("does not remove immediate", function () {
             if (!setImmediatePresent) {
-                this.skip();
+                return this.skip();
             }
 
             const stub = sinon.stub();
@@ -4807,6 +4833,7 @@ describe("#368 - timeout.refresh setTimeout arguments", function () {
             this.skip();
         }
     });
+
     it("should forward  arguments passed to setTimeout", function () {
         const clock = FakeTimers.install();
         const stub = sinon.stub();
@@ -5205,5 +5232,58 @@ describe("loop limit stack trace", function () {
             }
             assert.equals(caughtError, true);
         });
+    });
+});
+
+describe("Node Timer: ref(), unref(),hasRef()", function () {
+    let clock;
+
+    before(function () {
+        if (!addTimerReturnsObject) {
+            this.skip();
+        }
+        clock = FakeTimers.install();
+    });
+
+    afterEach(function () {
+        clock.uninstall();
+    });
+
+    it("should return the ref status as true after initiation", function () {
+        const stub = sinon.stub();
+        const refStatusForTimeout = clock.setTimeout(stub, 0).hasRef();
+        const refStatusForInterval = clock.setInterval(stub, 0).hasRef();
+        assert.isTrue(refStatusForTimeout);
+        assert.isTrue(refStatusForInterval);
+        clock.uninstall();
+    });
+
+    it("should return the ref status as false after using unref", function () {
+        const stub = sinon.stub();
+        const refStatusForTimeout = clock.setTimeout(stub, 0).unref().hasRef();
+        const refStatusForInterval = clock
+            .setInterval(stub, 0)
+            .unref()
+            .hasRef();
+        assert.isFalse(refStatusForInterval);
+        assert.isFalse(refStatusForTimeout);
+        clock.uninstall();
+    });
+
+    it("should return the ref status as true after using unref and then ref ", function () {
+        const stub = sinon.stub();
+        const refStatusForTimeout = clock
+            .setTimeout(stub, 0)
+            .unref()
+            .ref()
+            .hasRef();
+        const refStatusForInterval = clock
+            .setInterval(stub, 0)
+            .unref()
+            .ref()
+            .hasRef();
+        assert.isTrue(refStatusForInterval);
+        assert.isTrue(refStatusForTimeout);
+        clock.uninstall();
     });
 });
